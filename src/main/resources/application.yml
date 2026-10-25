@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: transaction-validator
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# Validation rules; each value can be overridden with an environment variable (e.g. from a Kubernetes ConfigMap)
+validation:
+  max-amount: ${VALIDATION_MAX_AMOUNT:10000.00}
+  supported-currencies: ${VALIDATION_SUPPORTED_CURRENCIES:SGD,USD,EUR,GBP,MYR}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
