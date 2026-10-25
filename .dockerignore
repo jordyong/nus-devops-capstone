@@ -8,3 +8,5 @@ docs/
 *.md
 Dockerfile
 .dockerignore
+infra/
+k8s/

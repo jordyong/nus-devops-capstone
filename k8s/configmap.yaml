@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: transaction-validator-config
+  namespace: finsecure
+  labels:
+    app.kubernetes.io/name: transaction-validator
+data:
+  # Bound to validation.* / server.* properties through Spring relaxed binding
+  VALIDATION_MAX_AMOUNT: "10000.00"
+  VALIDATION_SUPPORTED_CURRENCIES: "SGD,USD,EUR,GBP,MYR"
+  SERVER_SHUTDOWN: "graceful"
+  JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"

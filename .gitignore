@@ -11,3 +11,10 @@ target/
 .env
 *.pem
 *.key
+
+# Terraform: state and provider cache stay local
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
