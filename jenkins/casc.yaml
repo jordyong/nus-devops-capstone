@@ -1,0 +1,63 @@
+# Jenkins Configuration as Code. ${...} values are Docker secrets read from /run/secrets/<name>.
+jenkins:
+  systemMessage: "FinSecure Pay CI/CD – configured by JCasC (jenkins/casc.yaml)"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: "${jenkins_admin_password}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+security:
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: dockerhub
+              description: "Docker Hub push token (jordyong)"
+              username: "jordyong"
+              password: "${dockerhub_token}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: aws-jenkins
+              description: "IAM user finsecure-jenkins (eks:DescribeCluster + namespace-scoped EKS access)"
+              username: "${aws_access_key_id}"
+              password: "${aws_secret_access_key}"
+
+jobs:
+  - script: >
+      pipelineJob('transaction-validator') {
+        description('Build, test, scan, push and deploy the transaction validation API to EKS')
+        properties {
+          pipelineTriggers {
+            triggers {
+              githubPush()
+            }
+          }
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('https://github.com/jordyong/nus-devops-capstone.git') }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }

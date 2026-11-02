@@ -1,0 +1,46 @@
+# Local Jenkins + smee.io webhook relay.
+# Secrets and SMEE_URL live OUTSIDE the repo in the workspace folder (../../secrets):
+#   docker compose --env-file ../../secrets/jenkins.env up -d --build
+name: finsecure-ci
+
+services:
+  jenkins:
+    build: .
+    image: finsecure-jenkins:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    # Lets the jenkins user use the host Docker socket without running as root
+    group_add:
+      - "${DOCKER_GID:-990}"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./casc.yaml:/var/jenkins_conf/casc.yaml:ro
+    secrets:
+      - jenkins_admin_password
+      - dockerhub_token
+      - aws_access_key_id
+      - aws_secret_access_key
+
+  # Relays GitHub push webhooks from smee.io to Jenkins, so Jenkins needs no public port
+  # Pinned to v2: smee-client 5.x forwards requests that the Jenkins GitHub plugin rejects with 405 "Method POST required"
+  smee:
+    image: node:22-alpine
+    restart: unless-stopped
+    command: ["npx", "--yes", "smee-client@2.0.4", "--url", "${SMEE_URL:?set SMEE_URL in the env file}", "--target", "http://jenkins:8080/github-webhook/"]
+    depends_on:
+      - jenkins
+
+volumes:
+  jenkins_home:
+
+secrets:
+  jenkins_admin_password:
+    file: ${SECRETS_DIR:-../../secrets}/jenkins_admin_password
+  dockerhub_token:
+    file: ${SECRETS_DIR:-../../secrets}/dockerhub_token
+  aws_access_key_id:
+    file: ${SECRETS_DIR:-../../secrets}/aws_access_key_id
+  aws_secret_access_key:
+    file: ${SECRETS_DIR:-../../secrets}/aws_secret_access_key

@@ -10,3 +10,5 @@ Dockerfile
 .dockerignore
 infra/
 k8s/
+jenkins/
+Jenkinsfile

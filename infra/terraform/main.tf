@@ -2,6 +2,8 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
   azs = slice(data.aws_availability_zones.available.names, 0, 2)
 }
@@ -43,6 +45,22 @@ module "eks" {
 
   # Grants the identity running Terraform cluster-admin via an EKS access entry
   enable_cluster_creator_admin_permissions = true
+
+  # Jenkins deploys with its own IAM user, limited to editing the app namespace
+  access_entries = {
+    jenkins = {
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${var.jenkins_iam_user}"
+      policy_associations = {
+        edit = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+          access_scope = {
+            type       = "namespace"
+            namespaces = [var.app_namespace]
+          }
+        }
+      }
+    }
+  }
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets

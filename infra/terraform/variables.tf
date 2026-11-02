@@ -38,3 +38,15 @@ variable "endpoint_public_access_cidrs" {
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }
+
+variable "jenkins_iam_user" {
+  description = "IAM user Jenkins deploys as (created in the console, see infra/iam/jenkins-deployer-policy.json)"
+  type        = string
+  default     = "finsecure-jenkins"
+}
+
+variable "app_namespace" {
+  description = "Kubernetes namespace Jenkins may deploy to"
+  type        = string
+  default     = "finsecure"
+}
