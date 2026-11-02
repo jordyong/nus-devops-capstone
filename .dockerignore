@@ -15,3 +15,4 @@ Jenkinsfile
 reports/
 spotbugs-exclude.xml
 .trivyignore.yaml
+.deploy/

@@ -35,7 +35,8 @@ COPY --from=build --chown=app:app /workspace/target/extracted/snapshot-dependenc
 COPY --from=build --chown=app:app /workspace/target/extracted/application/ ./
 
 USER 10001
-EXPOSE 8080
+# 8080 = API, 8081 = actuator (probes, Prometheus metrics)
+EXPOSE 8080 8081
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=3 \

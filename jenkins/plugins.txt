@@ -10,3 +10,5 @@ ws-cleanup
 pipeline-stage-view
 pipeline-graph-view
 warnings-ng
+mailer
+email-ext

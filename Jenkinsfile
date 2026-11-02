@@ -123,7 +123,7 @@ pipeline {
                 sh '''
                     docker build \
                       --build-arg VERSION="$APP_VERSION" --build-arg REVISION="$GIT_SHORT" \
-                      -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .
+                      -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:$APP_VERSION" -t "$IMAGE:latest" .
                 '''
             }
         }
@@ -154,6 +154,7 @@ pipeline {
                     sh '''
                         echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
                         docker push "$IMAGE:$IMAGE_TAG"
+                        docker push "$IMAGE:$APP_VERSION"
                         docker push "$IMAGE:latest"
                     '''
                 }
@@ -171,7 +172,27 @@ pipeline {
                     sh '''
                         aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER" --kubeconfig "$KUBECONFIG"
 
-                        kubectl -n "$NAMESPACE" set image "deploy/$DEPLOYMENT" "transaction-validator=$IMAGE:$IMAGE_TAG"
+                        # Apply every manifest in k8s/ with the new image tag in a single rollout, so manifest changes
+                        # (probes, ports, ConfigMap, Services) ship together with the code that needs them.
+                        # The Namespace is cluster-scoped and admin-managed: Jenkins' access entry is limited to it.
+                        rm -rf .deploy && mkdir .deploy
+                        cat > .deploy/kustomization.yaml <<KUSTOMIZATION
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../k8s
+images:
+  - name: $IMAGE
+    newTag: "$IMAGE_TAG"
+patches:
+  - patch: |-
+      \\$patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: $NAMESPACE
+KUSTOMIZATION
+                        kubectl apply -k .deploy
                         kubectl -n "$NAMESPACE" annotate "deploy/$DEPLOYMENT" --overwrite \
                           kubernetes.io/change-cause="Jenkins #$BUILD_NUMBER: $IMAGE:$IMAGE_TAG"
 
@@ -210,9 +231,22 @@ pipeline {
         }
         failure {
             echo 'Pipeline failed – no new version was deployed (or the failed rollout was undone).'
+            emailext to: '$DEFAULT_RECIPIENTS', attachLog: true, compressLog: true,
+                subject: "FAILED: ${env.JOB_NAME} ${currentBuild.displayName}",
+                body: """<p><b>${env.JOB_NAME} ${currentBuild.displayName} failed.</b> No new version was deployed
+                         (or the failed rollout was rolled back).</p>
+                         <p>Image: ${env.IMAGE}:${env.IMAGE_TAG}<br>Build: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                         <p>Last log lines:</p><pre>\${BUILD_LOG, maxLines=40, escapeHtml=true}</pre>"""
+        }
+        fixed {
+            emailext to: '$DEFAULT_RECIPIENTS',
+                subject: "FIXED: ${env.JOB_NAME} ${currentBuild.displayName}",
+                body: """<p><b>${env.JOB_NAME} is healthy again.</b> ${currentBuild.displayName} succeeded after a failure
+                         and deployed ${env.IMAGE}:${env.IMAGE_TAG} to ${env.CLUSTER}/${env.NAMESPACE}.</p>
+                         <p>Build: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>"""
         }
         always {
-            sh 'rm -rf "$DOCKER_CONFIG" "$WORKSPACE/.kube"'
+            sh 'rm -rf "$DOCKER_CONFIG" "$WORKSPACE/.kube" "$WORKSPACE/.deploy"'
         }
     }
 }

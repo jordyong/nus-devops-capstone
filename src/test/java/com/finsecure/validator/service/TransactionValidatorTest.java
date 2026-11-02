@@ -15,13 +15,17 @@ import com.finsecure.validator.model.TransactionRequest;
 import com.finsecure.validator.model.ValidationError;
 import com.finsecure.validator.model.ValidationResult;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+
 class TransactionValidatorTest {
 
     private static final String SOURCE = "ACC12345678";
     private static final String DESTINATION = "ACC87654321";
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     private final TransactionValidator validator = new TransactionValidator(
-            new ValidationProperties(new BigDecimal("10000.00"), Set.of("SGD", "USD", "EUR")));
+            new ValidationProperties(new BigDecimal("10000.00"), Set.of("SGD", "USD", "EUR")), meterRegistry);
 
     private static TransactionRequest request(String source, String destination, String amount, String currency) {
         return new TransactionRequest("TXN-001", source, destination,
@@ -136,5 +140,17 @@ class TransactionValidatorTest {
                 TransactionValidator.UNSUPPORTED_CURRENCY,
                 TransactionValidator.INVALID_ACCOUNT_FORMAT,
                 TransactionValidator.SAME_ACCOUNT);
+    }
+
+    @Test
+    void countsOutcomesAndRejectionReasons() {
+        validator.validate(validRequest());
+        validator.validate(request(SOURCE, SOURCE, "20000.00", "JPY"));
+
+        assertThat(meterRegistry.get("finsecure.transactions").tag("outcome", "approved").counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("finsecure.transactions").tag("outcome", "rejected").counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("finsecure.validation.errors").tag("code", TransactionValidator.AMOUNT_LIMIT_EXCEEDED).counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("finsecure.validation.errors").tag("code", TransactionValidator.UNSUPPORTED_CURRENCY).counter().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("finsecure.validation.errors").tag("code", TransactionValidator.SAME_ACCOUNT).counter().count()).isEqualTo(1);
     }
 }

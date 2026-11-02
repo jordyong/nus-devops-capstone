@@ -13,7 +13,7 @@
 
     <groupId>com.finsecure</groupId>
     <artifactId>transaction-validator</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <name>transaction-validator</name>
     <description>FinSecure Pay transaction validation API</description>
 
@@ -29,6 +29,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- Exposes metrics in Prometheus format on /actuator/prometheus -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
         <dependency>

@@ -11,3 +11,5 @@ data:
   VALIDATION_SUPPORTED_CURRENCIES: "SGD,USD,EUR,GBP,MYR"
   SERVER_SHUTDOWN: "graceful"
   JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
+  # One JSON (Elastic Common Schema) object per log line, so Loki/Grafana can filter on fields
+  LOGGING_STRUCTURED_FORMAT_CONSOLE: "ecs"

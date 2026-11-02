@@ -22,6 +22,9 @@ services:
       - dockerhub_token
       - aws_access_key_id
       - aws_secret_access_key
+      - smtp_username
+      - smtp_password
+      - alert_email_to
 
   # Relays GitHub push webhooks from smee.io to Jenkins, so Jenkins needs no public port
   # Pinned to v2: smee-client 5.x forwards requests that the Jenkins GitHub plugin rejects with 405 "Method POST required"
@@ -44,3 +47,9 @@ secrets:
     file: ${SECRETS_DIR:-../../secrets}/aws_access_key_id
   aws_secret_access_key:
     file: ${SECRETS_DIR:-../../secrets}/aws_secret_access_key
+  smtp_username:
+    file: ${SECRETS_DIR:-../../secrets}/smtp_username
+  smtp_password:
+    file: ${SECRETS_DIR:-../../secrets}/smtp_password
+  alert_email_to:
+    file: ${SECRETS_DIR:-../../secrets}/alert_email_to

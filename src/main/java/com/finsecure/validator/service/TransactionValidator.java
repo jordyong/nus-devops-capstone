@@ -3,14 +3,22 @@ package com.finsecure.validator.service;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.finsecure.validator.config.ValidationProperties;
 import com.finsecure.validator.model.TransactionRequest;
 import com.finsecure.validator.model.ValidationError;
 import com.finsecure.validator.model.ValidationResult;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 /**
  * Applies the business validation rules to a transaction. All rules are evaluated so the
@@ -30,10 +38,33 @@ public class TransactionValidator {
     private static final Pattern ACCOUNT_PATTERN = Pattern.compile("^[A-Z0-9]{8,20}$");
     private static final int MAX_DECIMAL_PLACES = 2;
 
-    private final ValidationProperties properties;
+    private static final Logger log = LoggerFactory.getLogger(TransactionValidator.class);
 
-    public TransactionValidator(ValidationProperties properties) {
+    private static final List<String> ERROR_CODES = List.of(MISSING_FIELD, INVALID_AMOUNT, INVALID_AMOUNT_PRECISION,
+            AMOUNT_LIMIT_EXCEEDED, UNSUPPORTED_CURRENCY, INVALID_ACCOUNT_FORMAT, SAME_ACCOUNT);
+
+    private final ValidationProperties properties;
+    private final Counter approved;
+    private final Counter rejected;
+    private final Map<String, Counter> errorsByCode;
+
+    public TransactionValidator(ValidationProperties properties, MeterRegistry meterRegistry) {
         this.properties = properties;
+        // Business metrics, exported as finsecure_transactions_total{outcome=...} on /actuator/prometheus
+        this.approved = Counter.builder("finsecure.transactions")
+                .description("Validated transactions by outcome")
+                .tag("outcome", "approved")
+                .register(meterRegistry);
+        this.rejected = Counter.builder("finsecure.transactions")
+                .description("Validated transactions by outcome")
+                .tag("outcome", "rejected")
+                .register(meterRegistry);
+        // Registered up front so every series exists (at 0) from startup, which keeps Prometheus rate() accurate
+        this.errorsByCode = ERROR_CODES.stream().collect(Collectors.toUnmodifiableMap(Function.identity(),
+                code -> Counter.builder("finsecure.validation.errors")
+                        .description("Rejected transactions by broken validation rule")
+                        .tag("code", code)
+                        .register(meterRegistry)));
     }
 
     public ValidationResult validate(TransactionRequest request) {
@@ -66,7 +97,23 @@ public class TransactionValidator {
                     "source and destination accounts must differ"));
         }
 
-        return ValidationResult.of(request.transactionId(), errors);
+        ValidationResult result = ValidationResult.of(request.transactionId(), errors);
+        record(result);
+        return result;
+    }
+
+    private void record(ValidationResult result) {
+        if (result.valid()) {
+            approved.increment();
+            log.info("Transaction {} APPROVED", result.transactionId());
+            return;
+        }
+        rejected.increment();
+        List<String> codes = result.errors().stream().map(ValidationError::code).distinct().toList();
+        // One count per distinct rule broken, exported as finsecure_validation_errors_total{code=...}
+        codes.forEach(code -> errorsByCode.get(code).increment());
+        // Account numbers and amounts are deliberately not logged (no customer data in logs)
+        log.info("Transaction {} REJECTED codes={}", result.transactionId(), codes);
     }
 
     private void validateAmount(BigDecimal amount, List<ValidationError> errors) {

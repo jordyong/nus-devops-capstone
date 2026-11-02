@@ -1,0 +1,72 @@
+# kube-prometheus-stack: Prometheus Operator, Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics.
+# Installed by monitoring/install.sh. Storage is ephemeral (emptyDir): the cluster has no EBS CSI driver and is
+# destroyed at the end of every session, so dashboards, rules and datasources are all provisioned from this repo.
+fullnameOverride: kps
+
+# EKS runs the control plane; these components can't be scraped from inside the cluster
+# (their default alerts would fire forever). Control-plane logs go to CloudWatch instead.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    # Pick up ServiceMonitors / PrometheusRules from every namespace, not only ones labelled for this release
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1536Mi
+
+alertmanager:
+  alertmanagerSpec:
+    # Full Alertmanager config (routes, SMTP receiver) comes from a Secret that install.sh renders from
+    # monitoring/alertmanager-config.yaml.tmpl + the workspace secrets/ folder. SMTP credentials never enter git.
+    useExistingSecret: true
+    configSecret: alertmanager-finsecure
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+
+grafana:
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsTimezone: Asia/Singapore
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki.monitoring.svc:3100
+      jsonData:
+        maxLines: 1000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi

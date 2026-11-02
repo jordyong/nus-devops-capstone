@@ -1,0 +1,90 @@
+# Prometheus scrape config and alert rules for the transaction-validator.
+# Applied by monitoring/install.sh after kube-prometheus-stack (needs its CRDs).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: transaction-validator
+  namespace: finsecure
+  labels:
+    app.kubernetes.io/name: transaction-validator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: transaction-validator
+      app.kubernetes.io/component: metrics
+  endpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: transaction-validator
+  namespace: finsecure
+  labels:
+    app.kubernetes.io/name: transaction-validator
+spec:
+  groups:
+    - name: transaction-validator.rules
+      rules:
+        # A spike in rejected transactions points to a broken client release, a bad config change
+        # (e.g. a currency removed from the ConfigMap) or abuse such as card-testing.
+        - alert: HighTransactionRejectionRate
+          expr: |
+            (
+              sum(rate(finsecure_transactions_total{namespace="finsecure", outcome="rejected"}[2m]))
+              /
+              sum(rate(finsecure_transactions_total{namespace="finsecure"}[2m]))
+            ) > 0.5
+            and
+            sum(rate(finsecure_transactions_total{namespace="finsecure"}[2m])) > 0.2
+          for: 1m
+          labels:
+            severity: warning
+            team: finsecure
+          annotations:
+            summary: "More than 50% of transactions are being rejected"
+            description: >-
+              {{ $value | humanizePercentage }} of transactions were rejected over the last 2 minutes.
+              Check the rejection reasons on the FinSecure dashboard (finsecure_validation_errors_total by code)
+              and the application logs in Grafana Explore: {namespace="finsecure", app="transaction-validator"} |= "REJECTED".
+
+        # Fewer Ready replicas than desired = reduced capacity / no redundancy (e.g. crash loop, failed probes).
+        - alert: TransactionValidatorReplicasUnavailable
+          expr: |
+            kube_deployment_status_replicas_available{namespace="finsecure", deployment="transaction-validator"}
+              < kube_deployment_spec_replicas{namespace="finsecure", deployment="transaction-validator"}
+          for: 2m
+          labels:
+            severity: critical
+            team: finsecure
+          annotations:
+            summary: "transaction-validator has fewer available replicas than desired"
+            description: "Only {{ $value }} replica(s) available. Check `kubectl -n finsecure get pods` and `kubectl -n finsecure describe pod`."
+
+        - alert: TransactionValidatorDown
+          expr: |
+            sum(up{namespace="finsecure", service="transaction-validator-metrics"}) == 0
+            or
+            absent(up{namespace="finsecure", service="transaction-validator-metrics"})
+          for: 1m
+          labels:
+            severity: critical
+            team: finsecure
+          annotations:
+            summary: "No transaction-validator instance is being scraped"
+            description: "Prometheus can't reach any transaction-validator pod on :8081/actuator/prometheus."
+
+        - alert: TransactionValidatorHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_server_requests_seconds_bucket{namespace="finsecure", uri="/validate"}[5m]))
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            team: finsecure
+          annotations:
+            summary: "p95 latency of POST /validate is above 500 ms"
+            description: "p95 latency is {{ $value | humanizeDuration }}."

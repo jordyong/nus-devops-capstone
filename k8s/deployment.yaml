@@ -39,11 +39,13 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: transaction-validator
-          image: jordyong/transaction-validator:1.0.0-6161ce2
+          image: jordyong/transaction-validator:1.2.0   # the pipeline pins the immutable <version>-<sha> tag on deploy
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
+            - name: management
+              containerPort: 8081
           envFrom:
             - configMapRef:
                 name: transaction-validator-config
@@ -57,20 +59,20 @@ spec:
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: http
+              port: management
             periodSeconds: 5
             failureThreshold: 12
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: http
+              port: management
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: http
+              port: management
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3

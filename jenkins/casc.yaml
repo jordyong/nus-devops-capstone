@@ -19,6 +19,23 @@ security:
 unclassified:
   location:
     url: "http://localhost:8080/"
+    # Gmail only relays mail whose sender is the authenticated account
+    adminAddress: "FinSecure Jenkins <${smtp_username}>"
+  mailer:
+    smtpHost: "smtp.gmail.com"
+    smtpPort: "587"
+    useTls: true
+    authentication:
+      username: "${smtp_username}"
+      password: "${smtp_password}"
+  email-ext:
+    mailAccount:
+      smtpHost: "smtp.gmail.com"
+      smtpPort: "587"
+      useTls: true
+      credentialsId: smtp
+    defaultRecipients: "${alert_email_to}"
+    defaultContentType: "text/html"
 
 credentials:
   system:
@@ -30,6 +47,12 @@ credentials:
               description: "Docker Hub push token (jordyong)"
               username: "jordyong"
               password: "${dockerhub_token}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: smtp
+              description: "Gmail SMTP (app password) for build notifications"
+              username: "${smtp_username}"
+              password: "${smtp_password}"
           - usernamePassword:
               scope: GLOBAL
               id: aws-jenkins

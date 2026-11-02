@@ -11,11 +11,21 @@ validation:
   supported-currencies: ${VALIDATION_SUPPORTED_CURRENCIES:SGD,USD,EUR,GBP,MYR}
 
 management:
+  # Actuator (probes + metrics) on its own port: reachable inside the cluster, never through the public NLB
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:8081}
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      # Latency histogram buckets for http_server_requests_seconds, so Grafana can show p95/p99
+      percentiles-histogram:
+        http.server.requests: true
