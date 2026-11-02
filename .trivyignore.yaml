@@ -1,0 +1,14 @@
+# Accepted risks for the Trivy security gate. Every entry needs a justification and an expiry date,
+# after which the finding blocks the pipeline again and must be re-reviewed.
+misconfigurations:
+  - id: AWS-0040
+    statement: >-
+      Public EKS API endpoint is required: kubectl and the Jenkins deployer run outside the VPC.
+      Access is restricted to a single /32 (endpoint_public_access_cidrs has no default and rejects 0.0.0.0/0)
+      and all calls are IAM-authenticated.
+    expired_at: 2027-05-01
+  - id: AWS-0104
+    statement: >-
+      Worker nodes need outbound internet (via the NAT gateway) to pull images from Docker Hub and reach AWS APIs.
+      Nodes sit in private subnets with no inbound internet access.
+    expired_at: 2027-05-01

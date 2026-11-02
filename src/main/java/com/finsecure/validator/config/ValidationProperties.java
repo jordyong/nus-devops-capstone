@@ -10,4 +10,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "validation")
 public record ValidationProperties(BigDecimal maxAmount, Set<String> supportedCurrencies) {
+
+    /** Defensive, immutable copy so the configured currencies can't be changed after binding. */
+    public ValidationProperties {
+        supportedCurrencies = supportedCurrencies == null ? Set.of() : Set.copyOf(supportedCurrencies);
+    }
 }

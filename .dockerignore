@@ -12,3 +12,6 @@ infra/
 k8s/
 jenkins/
 Jenkinsfile
+reports/
+spotbugs-exclude.xml
+.trivyignore.yaml

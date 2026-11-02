@@ -1,6 +1,21 @@
 // FinSecure Pay – transaction-validator CI/CD
-// Checkout → Build → Test → Package → Security Checks → Container Build → Push → Deploy → Smoke Test
+// Checkout → Build → Test → Package → Security Checks → Container Build → Image Scan → Push → Deploy → Smoke Test
 // Set ROLLBACK_TAG to redeploy an existing image tag (known-good version) without rebuilding.
+//
+// Security gate: any HIGH or CRITICAL finding from SpotBugs/FindSecBugs (SAST), Trivy (dependencies, secrets,
+// IaC misconfiguration) or Trivy (container image) fails the build before the image is pushed or deployed.
+
+// Runs a Trivy scan, keeps the full JSON + HTML report, and returns non-zero if it holds a HIGH/CRITICAL finding.
+// Accepted risks (with justification and expiry) live in .trivyignore.yaml.
+def trivyGate(String name, String scan) {
+    sh """
+        trivy ${scan} --quiet --ignorefile .trivyignore.yaml --format json --output reports/trivy-${name}.json
+        trivy convert --quiet --format template --template @/usr/local/share/trivy/contrib/html.tpl \
+          --output reports/trivy-${name}.html reports/trivy-${name}.json
+    """
+    return sh(returnStatus: true,
+              script: "trivy convert --quiet --ignorefile .trivyignore.yaml --format table --severity HIGH,CRITICAL --exit-code 1 reports/trivy-${name}.json")
+}
 
 pipeline {
     agent any
@@ -72,7 +87,33 @@ pipeline {
         stage('Security Checks') {
             when { expression { !params.ROLLBACK_TAG } }
             steps {
-                echo 'Static analysis, dependency and image scanning gates are added in Task 5.'
+                sh 'rm -rf reports && mkdir -p reports'
+                script {
+                    // Run every scanner so all reports are produced, then fail once with the full list
+                    def failures = []
+                    if (sh(returnStatus: true, script: './mvnw -B -ntp spotbugs:check') != 0) {
+                        failures << 'SAST (SpotBugs + FindSecBugs)'
+                    }
+                    if (trivyGate('dependencies', 'rootfs --scanners vuln target/transaction-validator.jar') != 0) {
+                        failures << 'dependency scan (HIGH/CRITICAL CVEs in the application jar)'
+                    }
+                    if (trivyGate('repo', 'fs --scanners secret,misconfig --skip-files pom.xml --skip-dirs target --skip-dirs reports .') != 0) {
+                        failures << 'secret / IaC misconfiguration scan'
+                    }
+                    if (failures) {
+                        error "Security gate failed: ${failures.join('; ')}"
+                    }
+                }
+            }
+            post {
+                always {
+                    recordIssues enabledForFailure: true, skipPublishingChecks: true, tools: [
+                        spotBugs(pattern: 'target/spotbugsXml.xml'),
+                        trivy(id: 'trivy-dependencies', name: 'Trivy dependencies', pattern: 'reports/trivy-dependencies.json'),
+                        trivy(id: 'trivy-repo', name: 'Trivy secrets + IaC', pattern: 'reports/trivy-repo.json')
+                    ]
+                    archiveArtifacts artifacts: 'reports/**, target/spotbugsXml.xml', allowEmptyArchive: true
+                }
             }
         }
 
@@ -84,6 +125,25 @@ pipeline {
                       --build-arg VERSION="$APP_VERSION" --build-arg REVISION="$GIT_SHORT" \
                       -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .
                 '''
+            }
+        }
+
+        stage('Image Scan') {
+            when { expression { !params.ROLLBACK_TAG } }
+            steps {
+                script {
+                    // Scans the OS packages and the Java libraries inside the image that is about to be pushed
+                    if (trivyGate('image', "image --scanners vuln ${env.IMAGE}:${env.IMAGE_TAG}") != 0) {
+                        error 'Security gate failed: HIGH/CRITICAL vulnerabilities in the container image – not pushing'
+                    }
+                }
+            }
+            post {
+                always {
+                    recordIssues enabledForFailure: true, skipPublishingChecks: true,
+                        tools: [trivy(id: 'trivy-image', name: 'Trivy image', pattern: 'reports/trivy-image.json')]
+                    archiveArtifacts artifacts: 'reports/trivy-image.*', allowEmptyArchive: true
+                }
             }
         }
 

@@ -9,3 +9,4 @@ timestamper
 ws-cleanup
 pipeline-stage-view
 pipeline-graph-view
+warnings-ng

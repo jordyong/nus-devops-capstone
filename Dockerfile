@@ -23,7 +23,9 @@ LABEL org.opencontainers.image.title="transaction-validator" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}"
 
-RUN addgroup -S app && adduser -S -G app -u 10001 app
+# Pull in Alpine security fixes released after the base image was published (the image scan gate fails on fixable CVEs)
+RUN apk upgrade --no-cache \
+ && addgroup -S app && adduser -S -G app -u 10001 app
 WORKDIR /app
 
 # Spring Boot layers, least to most frequently changed, for better layer caching

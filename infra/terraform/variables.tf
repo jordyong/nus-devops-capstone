@@ -34,9 +34,13 @@ variable "node_desired_size" {
 }
 
 variable "endpoint_public_access_cidrs" {
-  description = "CIDRs allowed to reach the public Kubernetes API endpoint"
+  description = "CIDRs allowed to reach the public Kubernetes API endpoint (pass your own /32; no open default)"
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+
+  validation {
+    condition     = length(var.endpoint_public_access_cidrs) > 0 && !contains(var.endpoint_public_access_cidrs, "0.0.0.0/0")
+    error_message = "Restrict the API endpoint to specific CIDRs (e.g. your IP /32); 0.0.0.0/0 is not allowed."
+  }
 }
 
 variable "jenkins_iam_user" {
